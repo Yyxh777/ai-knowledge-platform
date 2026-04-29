@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 知识平台 - 登录</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f6f8;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 16px;
+            color: #1f2937;
+        }
+
+        .login-container {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            box-shadow: 0 6px 18px rgba(17, 24, 39, 0.06);
+            width: 100%;
+            max-width: 360px;
+            padding: 30px 26px;
+            animation: fadeIn 0.4s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .logo h1 {
+            font-size: 24px;
+            color: #111827;
+            font-weight: 650;
+            margin-bottom: 6px;
+        }
+
+        .logo p {
+            color: #6b7280;
+            font-size: 12px;
+        }
+
+        .form-group {
+            margin-bottom: 14px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            color: #374151;
+            font-weight: 500;
+            font-size: 13px;
+        }
+
+        .form-group input {
+            width: 100%;
+            height: 38px;
+            padding: 0 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 13px;
+            transition: all 0.2s;
+            outline: none;
+            background: #fafafa;
+        }
+
+        .form-group input:focus {
+            border-color: #9ca3af;
+            box-shadow: 0 0 0 2px rgba(156, 163, 175, 0.18);
+            background: #ffffff;
+        }
+
+        .login-btn {
+            width: 100%;
+            height: 38px;
+            background: #4b5563;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+
+        .login-btn:hover {
+            background: #374151;
+        }
+
+        .login-btn:active {
+            background: #1f2937;
+        }
+
+        .login-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error-message {
+            background: #fef2f2;
+            color: #b91c1c;
+            border: 1px solid #fecaca;
+            padding: 8px 10px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            font-size: 12px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+            animation: shake 0.5s;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 0.8s linear infinite;
+            margin-left: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 18px;
+            color: #9ca3af;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <h1>🤖 AI 知识平台</h1>
+            <p>智能对话，高效学习</p>
+        </div>
+
+        <div id="errorMessage" class="error-message"></div>
+
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">账号</label>
+                <input
+                    type="text"
+                    id="username"
+                    value="admin"
+                    placeholder="请输入账号"
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="password">密码</label>
+                <input
+                    type="password"
+                    id="password"
+                    value="admin"
+                    placeholder="请输入密码"
+                    required
+                >
+            </div>
+
+            <button type="submit" class="login-btn" id="loginBtn">
+                登录
+            </button>
+        </form>
+
+        <div class="footer">
+            © 2026 AI Knowledge Platform
+        </div>
+    </div>
+
+    <script>
+        const loginForm = document.getElementById('loginForm');
+        const loginBtn = document.getElementById('loginBtn');
+        const errorMessage = document.getElementById('errorMessage');
+
+        // 检查是否已登录
+        if (localStorage.getItem('access_token')) {
+            window.location.href = 'chat.html';
+        }
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // 禁用按钮，显示加载状态
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = '登录中<span class="loading"></span>';
+            errorMessage.classList.remove('show');
+
+            try {
+                // 获取表单数据（实际发送的是加密后的密码）
+                const username = document.getElementById('username').value;
+                const encryptedPassword = '04895f31816b7d1cb2a2bbfaee6107d4c57389d904d93d9ad7d4d7cd46c651d96aca709f645eead3cd1ea812f518d283b4d3c8d271359aab21848747a7735b7e0a3c9b84c97acd5c6b470c77518c393b306497590d2f0a48b86eb54d9c4ce228e65277dc9ca7';
+
+                // 构造表单数据
+                const formData = new URLSearchParams();
+                formData.append('username', username);
+                formData.append('password', encryptedPassword);
+                formData.append('grant_type', 'password');
+
+                // 发送登录请求
+                const response = await fetch('http://localhost:8081/blade-auth/oauth/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Authorization': 'Basic c2FiZXIzOnNhYmVyM19zZWNyZXQ=',
+                        'Blade-Requested-With': 'BladeHttpRequest',
+                        'Tenant-Id':'000000'
+                    },
+                    body: formData.toString()
+                });
+
+                const result = await response.json();
+
+                console.log('登录响应:', result); // 调试日志
+
+                // 检查是否有 access_token（根据实际返回结构调整）
+                if (result.access_token) {
+                    // 登录成功，保存 token 和用户信息
+                    localStorage.setItem('access_token', result.access_token);
+                    localStorage.setItem('refresh_token', result.refresh_token);
+                    localStorage.setItem('user_info', JSON.stringify(result));
+
+                    // 显示成功提示
+                    loginBtn.innerHTML = '✓ 登录成功';
+                    loginBtn.style.background = '#10b981';
+
+                    // 延迟跳转
+                    setTimeout(() => {
+                        window.location.href = 'chat.html';
+                    }, 500);
+                } else if (result.success && result.data && result.data.access_token) {
+                    // 兼容另一种返回格式（带 success 和 data 包装）
+                    localStorage.setItem('access_token', result.data.access_token);
+                    localStorage.setItem('refresh_token', result.data.refresh_token);
+                    localStorage.setItem('user_info', JSON.stringify(result.data));
+
+                    loginBtn.innerHTML = '✓ 登录成功';
+                    loginBtn.style.background = '#10b981';
+
+                    setTimeout(() => {
+                        window.location.href = 'chat.html';
+                    }, 500);
+                } else {
+                    throw new Error(result.msg || result.message || '登录失败：未返回有效的 token');
+                }
+            } catch (error) {
+                console.error('登录错误:', error);
+                errorMessage.textContent = error.message || '登录失败，请检查网络连接或联系管理员';
+                errorMessage.classList.add('show');
+
+                // 恢复按钮状态
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = '登录';
+            }
+        });
+
+        // 按 Enter 键提交表单
+        document.getElementById('password').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                loginForm.dispatchEvent(new Event('submit'));
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.springblade.modules.system.mapper.RoleLevelMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="roleLevelResultMap" type="org.springblade.modules.system.pojo.entity.RoleLevelEntity">
+        <result column="role_id" property="roleId"/>
+        <result column="level_code" property="levelCode"/>
+        <result column="remark" property="remark"/>
+    </resultMap>
+
+    <select id="selectRoleLevelPage" resultMap="roleLevelResultMap">
+        select * from aikp_role_level where is_deleted = 0
+    </select>
+
+    <select id="exportRoleLevel" resultType="org.springblade.modules.system.excel.RoleLevelExcel">
+        SELECT * FROM aikp_role_level ${ew.customSqlSegment}
+    </select>
+
+</mapper>

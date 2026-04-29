@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SqlDialectMappings">
+    <file url="file://$PROJECT_DIR$/java-service/doc/sql/bladex/bladex.dameng.all.create.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/java-service/doc/sql/bladex/bladex.mysql.all.create.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/java-service/doc/sql/bladex/bladex.oracle.all.create.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/java-service/doc/sql/bladex/bladex.postgres.all.create.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/java-service/doc/sql/bladex/bladex.sqlserver.all.create.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/java-service/doc/sql/bladex/bladex.yashan.all.create.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/java-service/doc/sql/flowable/flowable.dameng.all.create.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/java-service/doc/sql/flowable/flowable.mysql.all.create.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/java-service/doc/sql/flowable/flowable.oracle.all.create.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/java-service/doc/sql/flowable/flowable.postgres.all.create.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/java-service/doc/sql/flowable/flowable.sqlserver.all.create.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/java-service/doc/sql/flowable/flowable.yashan.all.create.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/java-service/doc/sql/my/aikp.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/java-service/doc/sql/upgrade/bladex.upgrade.4.3.0.to.4.4.0.sql" dialect="GenericSQL" />
+  </component>
+</project>

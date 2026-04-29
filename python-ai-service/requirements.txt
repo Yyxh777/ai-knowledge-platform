@@ -1,0 +1,32 @@
+fastapi
+uvicorn
+httpx
+python-dotenv
+pydantic
+langchain
+langchain-core
+langchain-community
+langchain-openai
+dashscope
+pymilvus
+pypdf
+pymupdf
+python-docx
+langchain-text-splitters
+langgraph
+langgraph-checkpoint-redis
+
+# 测试依赖
+pytest
+pytest-asyncio
+requests
+websockets
+
+# 可选：Redis 缓存（生产环境推荐）
+redis
+
+# MySQL 连接（个人数据查询：工具内同步查询用 pymysql，避免异步图中事件循环冲突）
+pymysql
+
+# 可选：性能测试
+locust
