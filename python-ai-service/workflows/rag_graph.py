@@ -39,10 +39,12 @@ DOC_TYPE_DISPLAY = {
 # ── 模块级单例：进程启动时初始化一次，所有节点共享，避免每次请求重复建连接 ──────────
 # LLM：分类节点用 Tongyi（旧版接口，返回字符串），生成节点用 ChatOpenAI（支持流式事件）
 _llm_classify = ChatOpenAI(model="qwen-plus", temperature=0)
-_llm_generate = ChatOpenAI(model="qwen-plus", temperature=0.7)
+# streaming=True 且节点内用 .stream() 拼接，上层 graph.astream_events 才能收到 on_chat_model_stream（打字机效果）
+_llm_generate = ChatOpenAI(model="qwen-plus", temperature=0.7, streaming=True)
 _llm_direct = ChatOpenAI(
     model="qwen-plus",
     temperature=0.9,
+    streaming=True,
     extra_body={"enable_search": True},
 )
 # Embeddings：向量化查询语句，DashScope text-embedding-v4 输出 1024 维
@@ -53,6 +55,32 @@ _milvus_client = MilvusClient(uri=MILVUS_URI)
 _llm_agent = ChatOpenAI(model="qwen-plus", temperature=0)
 
 # ────────────────────────────────────────────────────────────────────────────────
+
+
+def _stream_collect_text(llm: ChatOpenAI, messages: list, config: RunnableConfig | None) -> str:
+    """
+    同步流式调用 ChatOpenAI，拼接完整文本。
+
+    必须用 stream 而非 invoke：invoke 会一次返回整段，LangGraph astream_events 不会出现
+    on_chat_model_stream，前端只能收到整条答案。
+    传入 config 以便 token 流挂到当前 Graph run，rag_service 才能收到 on_chat_model_stream。
+    """
+    parts: list[str] = []
+    stream_iter = llm.stream(messages, config=config) if config is not None else llm.stream(messages)
+    for chunk in stream_iter:
+        c = getattr(chunk, "content", None)
+        if not c:
+            continue
+        if isinstance(c, str):
+            parts.append(c)
+        elif isinstance(c, list):
+            for block in c:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    parts.append(block.get("text") or "")
+                elif isinstance(block, str):
+                    parts.append(block)
+    return "".join(parts)
+
 
 BASE = "http://127.0.0.1:3210"
 @tool
@@ -151,9 +179,9 @@ _tool_agent = create_agent(_llm_agent,tools=[query_mysql])
 _web_search_agent = create_agent(_llm_direct,tools=[web_search])
 
 # 对话历史最大保留轮数（每轮 = 1 条 HumanMessage + 1 条 AIMessage）
-# 同时控制 Redis 存储上限和 LLM 上下文窗口，两者保持一致
+# 同时控制 checkpoint 中 messages 通道上限与 LLM 上下文窗口，两者保持一致
 MAX_HISTORY_TURNS = 10
-_MAX_STORED = MAX_HISTORY_TURNS * 2  # Redis 里最多存这么多条消息
+_MAX_STORED = MAX_HISTORY_TURNS * 2  # checkpoint 里最多保留这么多条消息
 # 个人信息节点：注入到 Agent 的最近消息条数（用于多轮追问，如「我的部门呢」）
 PERSONAL_INFO_HISTORY_MESSAGES = 6
 
@@ -162,9 +190,9 @@ def _trim_messages(existing: list, new: list) -> list:
     """
     有界对话历史 Reducer。
 
-    operator.add 会无限追加，导致 Redis 存储持续膨胀，每次加载的
-    payload 也越来越大。此 Reducer 在追加新消息的同时丢弃超出上限的旧消息，
-    确保 Redis 里永远只存最近 N 轮，存储量恒定。
+    operator.add 会无限追加，导致 checkpoint 中 messages 持续膨胀。
+    此 Reducer 在追加新消息的同时丢弃超出上限的旧消息，
+    确保 checkpoint 里永远只存最近 N 轮，存储量恒定。
     """
     return (existing + new)[-_MAX_STORED:]
 
@@ -179,7 +207,7 @@ class AgentState(TypedDict):
     retrieved_docs: list[dict]  # 检索到的文档
     answer: str  # 最终答案
     reasoning: str  # 分类推理过程(用于调试)
-    # 对话历史：有界 Reducer，Redis 存储量恒定（最多 MAX_HISTORY_TURNS 轮）
+    # 对话历史：有界 Reducer，checkpoint 存储量恒定（最多 MAX_HISTORY_TURNS 轮）
     messages: Annotated[list, _trim_messages]
     # 权限相关字段(阶段3新增)
     user_id: str  # 用户ID,由API层调用时传入
@@ -639,7 +667,7 @@ def personal_info_retrieval(state: AgentState) -> AgentState:
 
 
 # 5. 节点3a: 基于检索结果生成答案
-def generate_answer_with_rag(state: AgentState) -> AgentState:
+def generate_answer_with_rag(state: AgentState, config: RunnableConfig) -> AgentState:
     """基于检索到的文档生成答案"""
     print("【generate_answer】start")
 
@@ -705,21 +733,21 @@ def generate_answer_with_rag(state: AgentState) -> AgentState:
         ]
     )
 
-    response = llm.invoke(messages_to_send)
-    print(f"【generate_answer】done len={len(response.content)} docs={len(state['retrieved_docs'])}")
+    answer_text = _stream_collect_text(llm, messages_to_send, config)
+    print(f"【generate_answer】done len={len(answer_text)} docs={len(state['retrieved_docs'])}")
 
     return {
         **state,
-        "answer": response.content,
+        "answer": answer_text,
         # 追加本轮干净的 Q&A 到历史（operator.add 会接在已有 messages 后面）
         "messages": [
             HumanMessage(content=state["question"]),
-            AIMessage(content=response.content),
+            AIMessage(content=answer_text),
         ],
     }
 
 # 5. 节点3a: 基于数据库数据检索到的生成答案
-def generate_answer_with_db(state: AgentState) -> AgentState:
+def generate_answer_with_db(state: AgentState, config: RunnableConfig) -> AgentState:
     """基于数据库数据检索到的生成答案"""
     print("\n" + "=" * 60)
     print("【节点3a: generate_answer - 生成答案】")
@@ -763,24 +791,24 @@ def generate_answer_with_db(state: AgentState) -> AgentState:
 
     print(f"📄 上下文长度: {len(context)} 字 | 历史轮数: {len(history) // 2}")
     print("💬 正在调用LLM生成答案（流式）...")
-    response = llm.invoke(messages_to_send)
+    answer_text = _stream_collect_text(llm, messages_to_send, config)
 
-    print(f"✅ 答案生成完成! 长度: {len(response.content)} 字")
+    print(f"✅ 答案生成完成! 长度: {len(answer_text)} 字")
     print("=" * 60 + "\n")
 
     return {
         **state,
-        "answer": response.content,
+        "answer": answer_text,
         # 追加本轮干净的 Q&A 到历史（operator.add 会接在已有 messages 后面）
         "messages": [
             HumanMessage(content=state["question"]),
-            AIMessage(content=response.content),
+            AIMessage(content=answer_text),
         ],
     }
 
 
 # 5. 节点3b: 直接回答(不需要RAG)
-def direct_answer(state: AgentState) -> AgentState:
+def direct_answer(state: AgentState, config: RunnableConfig) -> AgentState:
     """闲聊/通用问题,直接用LLM回答，同时维护对话历史"""
     print("【direct_answer】start")
 
@@ -805,17 +833,17 @@ def direct_answer(state: AgentState) -> AgentState:
         + [HumanMessage(content=state["question"])]
     )
 
-    response = llm.invoke(messages_to_send)
-    
-    print(f"【direct_answer】done len={len(response.content)}")
+    answer_text = _stream_collect_text(llm, messages_to_send, config)
+
+    print(f"【direct_answer】done len={len(answer_text)}")
 
     return {
         **state,
-        "answer": response.content,
+        "answer": answer_text,
         "retrieved_docs": [],
         "messages": [
             HumanMessage(content=state["question"]),
-            AIMessage(content=response.content),
+            AIMessage(content=answer_text),
         ],
     }
 

@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.chat import router as chat_router
+from api.conversation import router as conversation_router
 from api.document import router as document_router
 from middleware.auth_middleware import AuthMiddleware
 from service.rag_service import startup as rag_startup, shutdown as rag_shutdown
@@ -10,7 +11,7 @@ from service.rag_service import startup as rag_startup, shutdown as rag_shutdown
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """管理应用生命周期：启动时建立 Redis 连接，关闭时释放。"""
+    """管理应用生命周期：启动时初始化 PostgreSQL checkpoint 池与 LangGraph，关闭时释放。"""
     await rag_startup()
     yield
     await rag_shutdown()
@@ -34,6 +35,7 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(chat_router, prefix="/ai")
+app.include_router(conversation_router, prefix="/ai")
 app.include_router(document_router, prefix="/ai")
 
 # 健康检查接口（不需要认证）

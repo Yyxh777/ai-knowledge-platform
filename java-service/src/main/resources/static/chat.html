@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 静态页默认映射：http://主机:端口/chat.html（根路径）。勿混淆为磁盘路径 static 文件夹。 -->
     <title>AI 知识助手</title>
     <!-- Markdown 解析库：优先 BootCDN（国内直连），jsdelivr 需要代理 -->
     <script src="https://cdn.bootcdn.net/ajax/libs/marked/9.1.6/marked.min.js"></script>
@@ -38,19 +39,175 @@
             overflow: hidden;
         }
 
-        .header {
-            background: #ffffff;
-            padding: 10px 14px;
-            border-bottom: 1px solid #e5e7eb;
+        .app-body {
+            flex: 1;
+            display: flex;
+            min-height: 0;
+        }
+
+        .history-panel {
+            width: 260px;
+            flex-shrink: 0;
+            background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+            border-right: 1px solid #e8eaed;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            transition: width 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.26s ease,
+                border-width 0.26s ease,
+                min-width 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+        }
+
+        .app-body.history-collapsed .history-panel {
+            width: 0;
+            min-width: 0;
+            opacity: 0;
+            border-right-width: 0;
+            pointer-events: none;
+        }
+
+        .history-title {
+            padding: 10px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #374151;
+            border-bottom: 1px solid #f3f4f6;
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: 8px;
+        }
+
+        .history-refresh {
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+            background: #fff;
+            cursor: pointer;
+            color: #6b7280;
+        }
+
+        .history-refresh:hover {
+            background: #f9fafb;
+        }
+
+        .conversation-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px 0;
+        }
+
+        .history-item {
+            padding: 10px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #f9fafb;
+            font-size: 12px;
+            color: #1f2937;
+        }
+
+        .history-item:hover {
+            background: #f9fafb;
+        }
+
+        .history-item.active {
+            background: #eef2ff;
+            border-left: 3px solid #6366f1;
+            padding-left: 9px;
+        }
+
+        .history-meta {
+            color: #9ca3af;
+            font-size: 11px;
+            margin-top: 4px;
+        }
+
+        .history-empty {
+            padding: 12px;
+            font-size: 12px;
+            color: #9ca3af;
+            text-align: center;
+        }
+
+        .main-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            min-height: 0;
+        }
+
+        .header {
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+            padding: 10px 14px;
+            border-bottom: 1px solid #e8eaed;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .history-toggle {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            border-radius: 11px;
+            border: 1px solid #e5e7eb;
+            background: linear-gradient(165deg, #ffffff 0%, #f3f4f6 100%);
+            cursor: pointer;
+            transition: transform 0.18s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+            color: #4f46e5;
+        }
+
+        .history-toggle:hover {
+            border-color: #c7d2fe;
+            background: linear-gradient(165deg, #ffffff 0%, #eef2ff 100%);
+            box-shadow: 0 4px 14px rgba(79, 70, 229, 0.15);
+            transform: translateY(-1px);
+        }
+
+        .history-toggle:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 4px rgba(79, 70, 229, 0.12);
+        }
+
+        .history-toggle svg {
+            width: 22px;
+            height: 22px;
+            display: block;
+        }
+
+        .history-toggle .tg-icon-collapsed {
+            display: none;
+        }
+
+        .history-toggle[aria-expanded="false"] .tg-icon-expanded {
+            display: none;
+        }
+
+        .history-toggle[aria-expanded="false"] .tg-icon-collapsed {
+            display: block;
         }
 
         .header h1 {
             font-size: 16px;
             font-weight: 600;
             color: #111827;
+            letter-spacing: -0.02em;
         }
 
         .new-chat-btn {
@@ -75,6 +232,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            min-height: 0;
         }
 
         .message-wrapper {
@@ -429,7 +587,22 @@
 </head>
 <body>
     <div class="header">
-        <h1>🤖 AI 知识助手</h1>
+        <div class="header-left">
+            <button type="button" id="toggleHistoryBtn" class="history-toggle" onclick="toggleHistoryPanel()"
+                    title="收起历史对话" aria-expanded="true" aria-controls="historySidebar">
+                <!-- 侧栏展开：双折线向左 = 收起 -->
+                <svg class="tg-icon-expanded" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M5 5v14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.35"/>
+                    <path d="M19 7l-5 5 5 5M13 7l-5 5 5 5" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <!-- 侧栏收起：双折线向右 = 展开 -->
+                <svg class="tg-icon-collapsed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M5 5v14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.22"/>
+                    <path d="M9 7l5 5-5 5M15 7l5 5-5 5" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+            <h1>AI 知识助手</h1>
+        </div>
         <div style="display: flex; gap: 8px; align-items: center;">
             <div id="userInfo" style="color: #6b7280; font-size: 12px;"></div>
             <div id="connectionStatus" class="connection-status connecting">正在连接...</div>
@@ -438,6 +611,17 @@
         </div>
     </div>
 
+    <div class="app-body">
+        <aside id="historySidebar" class="history-panel">
+            <div class="history-title">
+                <span>历史对话</span>
+                <button type="button" class="history-refresh" onclick="loadConversationList()">刷新</button>
+            </div>
+            <div id="conversationList" class="conversation-list">
+                <div class="history-empty">加载中…</div>
+            </div>
+        </aside>
+        <div class="main-panel">
     <div class="chat-container" id="chatContainer">
         <div class="empty-state" id="emptyState">
             <h2>欢迎使用 AI 知识助手</h2>
@@ -478,6 +662,8 @@
             </button>
         </div>
     </div>
+        </div>
+    </div>
 
     <script>
         let ws = null;
@@ -485,9 +671,54 @@
         let currentMessageDiv = null;
         let currentMessageContent = ''; // 累积消息内容
         let accessToken = ''; // 存储 access token
+        /** 当前会话 thread_id，与 Python WebSocket auth_success 同步 */
+        let currentThreadId = null;
+        let suppressWsReconnect = false;
 
-        // WebSocket 连接配置
+        // Python AI：REST 历史接口 + WebSocket
+        const PYTHON_API = 'http://localhost:8000/ai';
         const WS_URL = 'ws://localhost:8000/ai/ws/chat';
+        const STORAGE_HISTORY_SIDEBAR = 'chat_history_sidebar_visible';
+
+        function applyHistorySidebarState(collapsed) {
+            const body = document.querySelector('.app-body');
+            const btn = document.getElementById('toggleHistoryBtn');
+            if (!body || !btn) return;
+            body.classList.toggle('history-collapsed', collapsed);
+            btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            btn.title = collapsed ? '展开历史对话' : '收起历史对话';
+            try {
+                localStorage.setItem(STORAGE_HISTORY_SIDEBAR, collapsed ? '0' : '1');
+            } catch (e) { /* ignore */ }
+        }
+
+        function toggleHistoryPanel() {
+            const body = document.querySelector('.app-body');
+            if (!body) return;
+            const collapsed = !body.classList.contains('history-collapsed');
+            applyHistorySidebarState(collapsed);
+        }
+
+        function initHistorySidebarPreference() {
+            try {
+                const v = localStorage.getItem(STORAGE_HISTORY_SIDEBAR);
+                if (v === '0') {
+                    applyHistorySidebarState(true);
+                } else {
+                    applyHistorySidebarState(false);
+                }
+            } catch (e) {
+                applyHistorySidebarState(false);
+            }
+        }
+
+        function authHeaders() {
+            return {
+                'Authorization': 'Bearer ' + accessToken,
+                'Blade-Requested-With': 'BladeHttpRequest',
+                'Tenant-Id': '000000'
+            };
+        }
 
         // 配置 marked
         marked.setOptions({
@@ -499,6 +730,7 @@
 
         // 初始化
         document.addEventListener('DOMContentLoaded', () => {
+            initHistorySidebarPreference();
             // 检查登录状态
             checkLogin();
             
@@ -525,8 +757,106 @@
             const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
             document.getElementById('userInfo').textContent = `欢迎，${userInfo.user_name || '用户'}`;
 
-            // 连接 WebSocket
+            loadConversationList();
             connectWebSocket();
+        }
+
+        /** 从 Python 拉取左侧历史会话列表 */
+        async function loadConversationList() {
+            const listEl = document.getElementById('conversationList');
+            try {
+                const res = await fetch(PYTHON_API + '/conversations?limit=50', { headers: authHeaders() });
+                if (res.status === 401) {
+                    alert('登录已过期，请重新登录');
+                    logout();
+                    return;
+                }
+                const rows = await res.json();
+                if (!Array.isArray(rows)) {
+                    listEl.innerHTML = '<div class="history-empty">加载失败</div>';
+                    return;
+                }
+                if (rows.length === 0) {
+                    listEl.innerHTML = '<div class="history-empty">暂无历史会话</div>';
+                    return;
+                }
+                listEl.innerHTML = rows.map(row => {
+                    const tid = row.thread_id;
+                    const active = tid === currentThreadId ? ' active' : '';
+                    const t = row.updated_at ? new Date(row.updated_at * 1000).toLocaleString() : '';
+                    const shortTitle = tid.length > 28 ? '…' + tid.slice(-24) : tid;
+                    return `<div class="history-item${active}" data-tid="${escapeAttr(tid)}" onclick="openHistoryConversation(this.dataset.tid)"><div>${escapeHtml(shortTitle)}</div><div class="history-meta">${escapeHtml(t)}</div></div>`;
+                }).join('');
+            } catch (e) {
+                console.error(e);
+                listEl.innerHTML = '<div class="history-empty">无法连接 AI 服务</div>';
+            }
+        }
+
+        function escapeHtml(s) {
+            const d = document.createElement('div');
+            d.textContent = s == null ? '' : String(s);
+            return d.innerHTML;
+        }
+
+        function escapeAttr(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        }
+
+        /** 打开历史会话：展示消息并带上 thread_id 重连 WebSocket */
+        async function openHistoryConversation(threadId) {
+            if (!threadId) return;
+            currentThreadId = threadId;
+            document.querySelectorAll('.history-item').forEach(el => {
+                el.classList.toggle('active', el.dataset.tid === threadId);
+            });
+            try {
+                const res = await fetch(PYTHON_API + '/conversations/' + encodeURIComponent(threadId) + '/messages', {
+                    headers: authHeaders()
+                });
+                if (res.status === 401) {
+                    alert('登录已过期，请重新登录');
+                    logout();
+                    return;
+                }
+                if (!res.ok) {
+                    alert('无法加载该会话');
+                    return;
+                }
+                const msgs = await res.json();
+                renderHistoryMessages(Array.isArray(msgs) ? msgs : []);
+                disconnectWebSocket();
+                connectWebSocket(threadId);
+            } catch (e) {
+                console.error(e);
+                alert('加载消息失败');
+            }
+        }
+
+        function renderHistoryMessages(msgs) {
+            const chatContainer = document.getElementById('chatContainer');
+            chatContainer.innerHTML = '';
+            if (!msgs.length) {
+                chatContainer.innerHTML = '<div class="empty-state" id="emptyState"><p style="color:#6b7280;font-size:13px;">该会话暂无消息</p></div>';
+                chatContainer.scrollTop = 0;
+                return;
+            }
+            msgs.forEach(m => {
+                const role = m.role === 'assistant' ? 'assistant' : 'user';
+                addMessage(m.content || '', role);
+            });
+        }
+
+        function disconnectWebSocket() {
+            if (!ws) return;
+            suppressWsReconnect = true;
+            try {
+                const old = ws;
+                old.onclose = null;
+                old.close();
+            } finally {
+                ws = null;
+            }
         }
 
         // 退出登录
@@ -537,17 +867,21 @@
             window.location.href = 'login.html';
         }
 
-        // 连接 WebSocket
-        function connectWebSocket() {
+        // 连接 WebSocket；resumeThreadId 可选，用于续聊历史会话
+        function connectWebSocket(resumeThreadId) {
             updateConnectionStatus('connecting');
-            
+            suppressWsReconnect = false;
+
             ws = new WebSocket(WS_URL);
 
             ws.onopen = () => {
                 console.log('WebSocket 连接成功');
-                
-                // 发送认证消息（第一条消息必须是 token）
-                ws.send(JSON.stringify({ token: accessToken }));
+                const payload = { token: accessToken };
+                const tid = resumeThreadId != null && resumeThreadId !== '' ? resumeThreadId : currentThreadId;
+                if (tid) {
+                    payload.thread_id = tid;
+                }
+                ws.send(JSON.stringify(payload));
             };
 
             ws.onmessage = (event) => {
@@ -563,11 +897,13 @@
             ws.onclose = () => {
                 console.log('WebSocket 连接关闭');
                 updateConnectionStatus('disconnected');
-                
-                // 5秒后尝试重连
+                if (suppressWsReconnect) {
+                    suppressWsReconnect = false;
+                    return;
+                }
                 setTimeout(() => {
-                    if (ws.readyState === WebSocket.CLOSED) {
-                        connectWebSocket();
+                    if (!ws || ws.readyState === WebSocket.CLOSED) {
+                        connectWebSocket(currentThreadId);
                     }
                 }, 5000);
             };
@@ -592,7 +928,12 @@
             switch (data.type) {
                 case 'auth_success':
                     console.log('认证成功:', data.user);
+                    if (data.thread_id) {
+                        currentThreadId = data.thread_id;
+                    }
                     updateConnectionStatus('connected');
+                    loadConversationList();
+                    updateSendButton();
                     break;
 
                 case 'start':
@@ -641,8 +982,11 @@
                 return;
             }
 
-            // 隐藏空状态
-            document.getElementById('emptyState').style.display = 'none';
+            // 隐藏空状态（打开历史会话后可能没有 #emptyState，不能裸访问 .style）
+            const emptyStateEl = document.getElementById('emptyState');
+            if (emptyStateEl) {
+                emptyStateEl.style.display = 'none';
+            }
 
             // 添加用户消息
             addMessage(message, 'user');
@@ -726,8 +1070,11 @@
             renderMarkdown(messageDiv, content);
         }
 
-        // 清空对话
+        // 清空对话（新会话）
         function clearChat() {
+            currentThreadId = null;
+            document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
+            disconnectWebSocket();
             const chatContainer = document.getElementById('chatContainer');
             chatContainer.innerHTML = `
                 <div class="empty-state" id="emptyState">
@@ -753,6 +1100,8 @@
                     </div>
                 </div>
             `;
+            connectWebSocket(null);
+            loadConversationList();
         }
 
         // 处理按键

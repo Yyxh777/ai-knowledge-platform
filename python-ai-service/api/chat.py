@@ -1,8 +1,7 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from models.chat import ChatRequest, ChatResponse
-from service.rag_service import  chat_with_rag_stream
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from service.rag_service import chat_with_rag_stream
 from service.auth_service import validate_token
-from middleware.auth_deps import get_current_user
+from utils.conversation_db import validate_thread_access
 from typing import Dict
 import json
 import time
@@ -56,6 +55,12 @@ async def websocket_chat(websocket: WebSocket):
         user_id = str(user_info["user_id"])
         thread_id = auth_message.get("thread_id") or f"{user_id}_{int(time.time() * 1000)}"
         thread_id = str(thread_id)
+
+        ok_access, access_err = validate_thread_access(thread_id, user_id)
+        if not ok_access:
+            await safe_send(websocket, {"type": "error", "content": access_err})
+            await websocket.close()
+            return
 
         await safe_send(websocket, {
             "type":      "auth_success",

@@ -14,7 +14,8 @@ pymupdf
 python-docx
 langchain-text-splitters
 langgraph
-langgraph-checkpoint-redis
+langgraph-checkpoint-postgres
+psycopg[binary]
 
 # 测试依赖
 pytest

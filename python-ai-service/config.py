@@ -33,9 +33,13 @@ os.environ["DASHSCOPE_API_KEY"] = DASHSCOPE_API_KEY
 MILVUS_URI: str = os.getenv("MILVUS_URI", "http://localhost:19530")
 MILVUS_COLLECTION_NAME: str = os.getenv("MILVUS_COLLECTION_NAME", "document_collection")
 
-# ── Redis（会话记忆 Checkpointer）─────────────────────────────────────────────
+# ── Redis（可选：其它缓存场景；LangGraph checkpoint 已改用 PostgreSQL）──────────
 REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
 REDIS_TTL_SEC: int = int(os.getenv("REDIS_TTL_SEC", "86400"))  # 默认保留 1 天
+
+# ── PostgreSQL（LangGraph Checkpoint）──────────────────────────────────────────
+# 示例：postgresql://user:pass@localhost:5432/dbname
+POSTGRES_URI: str = os.getenv("POSTGRES_URI", "")
 
 # ── Java 服务 ─────────────────────────────────────────────────────────────────
 JAVA_SERVICE_URL: str = os.getenv("JAVA_SERVICE_URL", "http://localhost:8081")
