@@ -183,6 +183,7 @@ _web_search_agent = create_agent(_llm_direct,tools=[web_search])
 MAX_HISTORY_TURNS = 10
 _MAX_STORED = MAX_HISTORY_TURNS * 2  # checkpoint 里最多保留这么多条消息
 # 个人信息节点：注入到 Agent 的最近消息条数（用于多轮追问，如「我的部门呢」）
+# 个人信息查询通过工具调用，故历史消息条数可以适当减少，避免上下文过长，影响模型理解
 PERSONAL_INFO_HISTORY_MESSAGES = 6
 
 
@@ -201,23 +202,28 @@ def _trim_messages(existing: list, new: list) -> list:
 class AgentState(TypedDict):
     """决策流的状态"""
 
-    # 原有字段
-    question: str  # 用户原始问题
-    question_type: str  # 分类结果: company_policy/tech_docs/general/mixed/personal_info
-    retrieved_docs: list[dict]  # 检索到的文档
-    answer: str  # 最终答案
-    reasoning: str  # 分类推理过程(用于调试)
     # 对话历史：有界 Reducer，checkpoint 存储量恒定（最多 MAX_HISTORY_TURNS 轮）
     messages: Annotated[list, _trim_messages]
-    # 权限相关字段(阶段3新增)
+
+    # 入参字段
+    question: str  # 用户原始问题
+    # 权限相关字段
     user_id: str  # 用户ID,由API层调用时传入
     role_id: int  # Java服务返回的角色ID
     role_name: str  # 角色名称,如 developer/hr/admin
+
+    # 图中产生的字段
+    question_type: str  # 分类结果: company_policy/tech_docs/general/mixed/personal_info
+    retrieved_docs: list[dict]  # 检索到的文档
+    reasoning: str  # 分类推理过程(用于调试)
     access_levels: list[str]  # Java服务返回的权限level数组,如 ["public","internal"]
     permission_filter: str  # 翻译成Milvus的filter表达式
     no_permission: bool  # True=文档存在但无权限; False=文档不存在或有权限
     # 个人信息相关字段
     personal_data: dict  # 从MySQL查询到的个人数据
+
+    # 出参
+    answer: str  # 最终答案
 
 
 # 节点0：获取用户角色与权限
@@ -619,11 +625,14 @@ def personal_info_retrieval(state: AgentState) -> AgentState:
     retrieved_docs: list = []
 
     for msg in result_messages:
+        # 非工具节点不进入
         if not isinstance(msg, ToolMessage):
             continue
+        # 获取工具名称，非query_mysql工具不进入
         tool_name = getattr(msg, "name", "") or ""
         if tool_name and tool_name != "query_mysql":
             continue
+        # 解析工具返回内容
         raw = msg.content
         result_str = raw if isinstance(raw, str) else str(raw)
         try:
@@ -631,11 +640,13 @@ def personal_info_retrieval(state: AgentState) -> AgentState:
         except json.JSONDecodeError as e:
             retrieved_docs.append(_personal_doc(f"查询结果解析失败: {e}", 0.0))
             continue
+        # 若格式为dict的返回内容有error标识，则查询失败
         if isinstance(result_data, dict) and "error" in result_data:
             retrieved_docs.append(
                 _personal_doc(f"查询失败: {result_data['error']}", 0.0)
             )
             continue
+        # 若有值list则成功返回
         if isinstance(result_data, list) and len(result_data) > 0:
             personal_data = (
                 result_data[0] if len(result_data) == 1 else {"records": result_data}
@@ -746,7 +757,7 @@ def generate_answer_with_rag(state: AgentState, config: RunnableConfig) -> Agent
         ],
     }
 
-# 5. 节点3a: 基于数据库数据检索到的生成答案
+# 5. 节点3b: 基于数据库数据检索到的生成答案
 def generate_answer_with_db(state: AgentState, config: RunnableConfig) -> AgentState:
     """基于数据库数据检索到的生成答案"""
     print("\n" + "=" * 60)
@@ -807,7 +818,7 @@ def generate_answer_with_db(state: AgentState, config: RunnableConfig) -> AgentS
     }
 
 
-# 5. 节点3b: 直接回答(不需要RAG)
+# 5. 节点3c: 直接回答(不需要RAG)
 def direct_answer(state: AgentState, config: RunnableConfig) -> AgentState:
     """闲聊/通用问题,直接用LLM回答，同时维护对话历史"""
     print("【direct_answer】start")

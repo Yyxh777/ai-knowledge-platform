@@ -28,7 +28,7 @@ def createCollection(collection_name: str) -> bool:
     if milvus_client.has_collection(collection_name):
         print(f"集合 '{collection_name}' 已存在，跳过创建")
         return True
-    # 创建shema
+    # 创建schema
     schema = milvus_client.create_schema(auto_id=False,enable_dynamic_field=False)
     # 定义字段
     schema.add_field("id",          DataType.VARCHAR,is_primary = True,max_length = 128)
@@ -55,10 +55,10 @@ def createCollection(collection_name: str) -> bool:
 
 
 def getAll():
-    connections.connect(host="192.168.8.104",port="19530")
+    connections.connect(host="192.168.8.153",port="19530")
     collection = Collection("document_collection")
     iterator = collection.query_iterator(
-        output_fields=["id", "text","type"]
+        output_fields=["id", "record_id","type","access_level"]
     )
 
     results = []

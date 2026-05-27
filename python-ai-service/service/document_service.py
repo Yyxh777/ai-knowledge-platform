@@ -1,30 +1,78 @@
-import config  # 确保 .env 加载并写入 os.environ
-from typing import List
-from langchain_community.embeddings import DashScopeEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+import os
 from utils.file_utils import (
     download_file_from_url,
     get_file_extension,
-    extract_text_from_docx,
-    extract_text_from_pdf,
     extract_text_from_txt,
+    download_to_local
 )
-from config import MILVUS_COLLECTION_NAME
-from utils.milvus_utils import createCollection, removeData, get_milvus_client
-
-# ── 模块级单例：切片器参数统一在此处管理 ────────────────────────────────────────
-# separators 按优先级从高到低排列：
-#   1. 双换行（段落边界）2. 单换行  3. 中文句末标点  4. 中文逗号/分号
-#   5. 英文句末标点  6. 空格  7. 空字符串（逐字符兜底，一般不会触发）
-# chunk_size=500：约合 500 汉字，换算为 ~300~400 token，适合大多数 embedding 模型的上下文窗口
-# chunk_overlap=50：10% 重叠，保证跨块语义的连贯性，防止关键句子被切断后两块都检索不到
-_text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=500,
-    chunk_overlap=50,
-    separators=["\n\n", "\n", "。", "！", "？", "；", "，", ".", "!", "?", " ", ""],
+from utils.milvus_utils import removeData
+from config import (
+    MILVUS_URI,
+    MILVUS_COLLECTION_NAME,
+    MINERU_API_KEY
 )
-# ────────────────────────────────────────────────────────────────────────────────
 
+from langchain_community.embeddings import DashScopeEmbeddings
+from llama_index.core import Settings
+from llama_index.embeddings.langchain import LangchainEmbedding
+from llama_index.readers.mineru import MinerUReader
+from langchain_openai import ChatOpenAI
+from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core.extractors import TitleExtractor
+from llama_index.vector_stores.milvus import MilvusVectorStore
+
+from llama_index.core.ingestion import IngestionPipeline
+from llama_index.core import Document
+from pymilvus import DataType
+from pymilvus import MilvusClient
+
+# 设置llamaIndex默认嵌入和问答模型
+Settings.embed_model = LangchainEmbedding(langchain_embeddings=DashScopeEmbeddings(model="text-embedding-v4"))
+Settings.llm = ChatOpenAI(model="qwen-plus", temperature=0.7)
+
+# ── 模块级单例 ────────────────────────────────────────
+# MinerU解析器
+_mineru_reader = MinerUReader(
+    mode="precision",
+    token=MINERU_API_KEY
+)
+# 语义切割器
+_splitter = SentenceSplitter(chunk_size=500, chunk_overlap=50)
+# 标题元数据标签器
+_title_extractor = TitleExtractor(nodes=5)
+# milvus向量数据库客户端
+_vector_store = MilvusVectorStore(
+    uri=MILVUS_URI,
+    dim=1024,
+    overwrite=True,
+    enable_dynamic_field=True,
+    collection_name=MILVUS_COLLECTION_NAME,
+    scalar_field_names=["record_id", "type", "access_level"], # 关键参数：定义独立字段名
+    scalar_field_types=[DataType.VARCHAR,DataType.VARCHAR,DataType.VARCHAR], # 关键参数：定义独立字段类型
+)
+
+
+TMP_SAVE_DIR: str = r"D:\MY\ai-knowledge-platform\python-ai-service\temp"
+
+_scalar_indexes_ready = False  # 模块级标记
+
+def _ensure_scalar_indexes():
+    global _scalar_indexes_ready
+    if _scalar_indexes_ready:
+        return  # 已经建过了，跳过
+    client = MilvusClient(uri=MILVUS_URI)
+    if not client.has_collection(MILVUS_COLLECTION_NAME):
+        return  # 集合还不存在
+    existing = client.list_indexes(MILVUS_COLLECTION_NAME)
+    if "ref_doc_id" in existing:
+        _scalar_indexes_ready = True  # 索引已存在，标记完成
+        return
+    params = client.prepare_index_params()
+    params.add_index("record_id", index_type="INVERTED",params={"json_cast_type":"varchar"})
+    params.add_index("type", index_type="BITMAP",params={"json_cast_type":"varchar"})
+    params.add_index("access_level", index_type="BITMAP",params={"json_cast_type":"varchar"})
+    client.create_index(MILVUS_COLLECTION_NAME, params)
+    _scalar_indexes_ready = True
 
 def upload_document_data(id: str, file_url: str, doc_type: str, access_level: str):
     """
@@ -41,55 +89,59 @@ def upload_document_data(id: str, file_url: str, doc_type: str, access_level: st
         print(f"正在下载文件: {file_url}")
         file_content = download_file_from_url(file_url)
         print(f"文件下载成功，大小: {len(file_content)} bytes")
+        if len(file_content) == 0:
+            raise Exception("文件内容为空")
 
-        # 2. 按文件类型提取纯文本
+        # 2. 文档解析
         file_ext = get_file_extension(file_url)
         print(f"文件类型: {file_ext}")
 
-        if file_ext == "docx":
-            text = extract_text_from_docx(file_content)
-        elif file_ext == "pdf":
-            text = extract_text_from_pdf(file_content)
+        if file_ext == "docx" or file_ext == "pdf":
+            file_path = download_to_local(url=file_url, save_dir=TMP_SAVE_DIR)
+            try:
+                documents = _mineru_reader.load_data(
+                    file_path,
+                    extra_info={
+                        "record_id": id,
+                        "type": doc_type,
+                        "access_level": access_level,
+                    },
+                )
+            finally:
+                if file_path and os.path.isfile(file_path):
+                    try:
+                        os.remove(file_path)
+                        print(f"已删除临时文件: {file_path}")
+                    except OSError as e:
+                        print(f"删除临时文件失败: {file_path}, {e}")
         elif file_ext in ("txt", "md"):
-            text = extract_text_from_txt(file_content)
+            documents = [Document(
+                text=extract_text_from_txt(file_content),
+                metadata={"record_id": id, "type": doc_type, "access_level": access_level},
+            )]
         else:
             raise Exception(f"不支持的文件类型: {file_ext}")
 
-        print(f"文本提取成功，长度: {len(text)} 字符")
+        print(f"文本提取成功，长度: {len(documents)} 个文档")
 
-        # 3. 语义切片
-        chunks: List[str] = _text_splitter.split_text(text)
-        print(f"文本切片完成，共 {len(chunks)} 个文本块")
+        # 3.编排数据处理管线
+        pipeline = IngestionPipeline(
+            transformations=[
+                _splitter,
+                _title_extractor,
+                Settings.embed_model,
+            ],
+            vector_store=_vector_store
+        )
 
-        # 4. 确保 Milvus 集合存在
-        milvus_client = get_milvus_client()
-        if not milvus_client.has_collection(MILVUS_COLLECTION_NAME):
-            print(f"集合不存在，正在创建: {MILVUS_COLLECTION_NAME}")
-            createCollection(MILVUS_COLLECTION_NAME)
+        # 4.执行管线
+        nodes = pipeline.run(documents=documents, show_progress=True)
 
-        # 5. 批量向量化（一次 API 调用，性能远优于逐条调用）
-        embeddings = DashScopeEmbeddings(model="text-embedding-v4")
-        print(f"正在批量生成 {len(chunks)} 个文本块的向量...")
-        vectors = embeddings.embed_documents(chunks)
+        if nodes and len(nodes) > 0:
+            _ensure_scalar_indexes()
+            return True
 
-        # 6. 组装数据并写入 Milvus
-        print(f"文件记录id: {id}")
-        data = [
-            {
-                "id":           f"{id}_{i}",   # 复合 ID，格式: "{record_id}_{chunk_index}"
-                "vector":       vector,
-                "text":         chunk,
-                "record_id":    id,            # 用于按文件批量删除
-                "type":         doc_type,
-                "access_level": access_level,
-            }
-            for i, (chunk, vector) in enumerate(zip(chunks, vectors))
-        ]
-
-        print(f"正在写入 Milvus: {MILVUS_COLLECTION_NAME}")
-        milvus_client.insert(collection_name=MILVUS_COLLECTION_NAME, data=data)
-
-        return True
+        return False
 
     except Exception as e:
         print(f"处理文档失败: {str(e)}")

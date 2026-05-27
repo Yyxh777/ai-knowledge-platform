@@ -3,9 +3,10 @@ from config import POSTGRES_URI
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
-from workflows.rag_graph import create_classification_graph
+from rag_workflows.rag_graph import create_classification_graph
 from utils.conversation_db import init_db, ensure_conversation, add_message
 
+# 定义checkpointer、连接池？、graph
 _checkpointer: AsyncPostgresSaver | None = None
 _cp_pool: AsyncConnectionPool | None = None
 _graph = None
@@ -85,23 +86,24 @@ async def chat_with_rag_stream(query: str, access_token: str, thread_id: str, us
     }
 
     try:
-        streamed_tokens = 0
-        assistant_text = ""
+        streamed_tokens = 0 # 流式返回的token数量
+        assistant_text = "" # 助手返回的文本
 
+        # 异步迭代
         async for event in _graph.astream_events(initial_state, config=config, version="v2"):
-            kind = event["event"]
-            node = event.get("metadata", {}).get("langgraph_node", "")
+            kind = event["event"] # 事件类型
+            node = event.get("metadata", {}).get("langgraph_node", "") # 节点名称
 
             if kind == "on_chat_model_stream" and node in (
                 "generate_answer",
                 "direct_answer",
                 "generate_answer_with_db",
             ):
-                content = event["data"]["chunk"].content
-                if isinstance(content, str) and content:
-                    streamed_tokens += len(content)
+                content = event["data"]["chunk"].content # 获取节点输出的内容
+                if isinstance(content, str) and content: # 如果内容是字符串且不为空
+                    streamed_tokens += len(content) 
                     assistant_text += content
-                    yield content
+                    yield content # 流式返回内容并结束当前循环
 
             elif kind == "on_chain_end" and node in (
                 "generate_answer",

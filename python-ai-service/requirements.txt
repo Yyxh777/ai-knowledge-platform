@@ -31,3 +31,7 @@ pymysql
 
 # 可选：性能测试
 locust
+
+# LlamaIndex（demo/mineru_test：DashScope 嵌入桥接 + OpenAI 兼容 LLM）
+llama-index-embeddings-langchain
+llama-index-llms-openai

@@ -73,6 +73,22 @@ def extract_text_from_txt(file_content: bytes) -> str:
     raise Exception("无法识别文件编码")
 
 
+def download_to_local(url: str, save_dir: str = None) -> str:
+    """从 URL 下载文件保存到本地，返回本地文件路径。"""
+    if save_dir is None:
+        save_dir = os.path.join(os.path.dirname(__file__), "..", "temp")
+    os.makedirs(save_dir, exist_ok=True)
+
+    filename = os.path.basename(url.split("?")[0])
+    save_path = os.path.join(save_dir, filename)
+
+    content = download_file_from_url(url)
+    with open(save_path, "wb") as f:
+        f.write(content)
+
+    return save_path
+
+
 def get_file_extension(url: str) -> str:
     """从 URL 中提取文件扩展名（小写，不含点号）。"""
     url_without_params = url.split("?")[0]
